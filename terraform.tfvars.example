@@ -1,0 +1,25 @@
+# --- Civo -------------------------------------------------------------------
+civo_api_token     = "REPLACE_ME"         # https://dashboard.civo.com/security
+civo_region        = "LON1"
+civo_instance_size = "g3.small"           # bump to "g3.medium" if the guardrail runs hot
+civo_disk_image    = "ubuntu-noble"
+hostname           = "defenseclaw"
+
+# --- SSH access (replaces Tailscale) ----------------------------------------
+# Paste the contents of your public key file (e.g. ~/.ssh/id_ed25519.pub)
+ssh_public_key   = "ssh-ed25519 AAAA... you@host"
+
+# Lock this to your source IP(s). Use /32 for a single address.
+ssh_allowed_cidr = ["203.0.113.5/32"]
+
+# --- Relax.ai (OpenClaw model backend) --------------------------------------
+relax_api_key = "REPLACE_ME"
+
+# --- OpenClaw ---------------------------------------------------------------
+# Generate with e.g. `openssl rand -hex 32`
+openclaw_gateway_token = "REPLACE_ME"
+
+# --- Slack (optional) -------------------------------------------------------
+# Leave empty to skip Slack integration.
+slack_bot_token = ""
+slack_app_token = ""

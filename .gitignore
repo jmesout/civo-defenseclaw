@@ -1,0 +1,41 @@
+# --- Terraform --------------------------------------------------------------
+# Real credential files (keep only the *.example)
+*.tfvars
+!*.tfvars.example
+
+# Local state + plan artefacts
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Provider plugin cache
+.terraform/
+
+# Local override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# --- Secrets / keys ---------------------------------------------------------
+.env
+.env.*
+*.pem
+*.key
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.pfx
+*.p12
+
+# --- OS / editor detritus ---------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
