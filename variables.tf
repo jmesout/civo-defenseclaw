@@ -34,8 +34,14 @@ variable "ssh_public_key" {
 }
 
 variable "ssh_allowed_cidr" {
-  description = "List of CIDRs permitted to SSH into the instance, e.g. [\"203.0.113.5/32\"]. Lock this down to your source IP."
+  description = <<-EOT
+    List of CIDRs permitted to SSH into the instance.
+    Default is "0.0.0.0/0" (open to the internet) — this relies solely on your
+    SSH public key for authentication. For production, lock this to your source
+    IP, e.g. ["203.0.113.5/32"].
+  EOT
   type        = list(string)
+  default     = ["0.0.0.0/0"]
 }
 
 variable "relax_api_key" {
@@ -44,10 +50,9 @@ variable "relax_api_key" {
   sensitive   = true
 }
 
-variable "openclaw_gateway_token" {
-  description = "Bearer token required on the OpenClaw gateway (port 18789)"
+variable "relax_model" {
+  description = "Relax.ai model id used as OpenClaw's primary model (e.g. \"Kimi-K25\"). Rendered into openclaw.json as \"relax/<relax_model>\"."
   type        = string
-  sensitive   = true
 }
 
 variable "slack_bot_token" {

@@ -5,6 +5,10 @@ data "civo_disk_image" "ubuntu" {
   }
 }
 
+resource "random_id" "openclaw_gateway_token" {
+  byte_length = 32
+}
+
 resource "civo_instance" "defenseclaw" {
   hostname    = var.hostname
   size        = var.civo_instance_size
@@ -16,7 +20,8 @@ resource "civo_instance" "defenseclaw" {
     hostname               = var.hostname
     ssh_public_key         = var.ssh_public_key
     relax_api_key          = var.relax_api_key
-    openclaw_gateway_token = var.openclaw_gateway_token
+    relax_model            = var.relax_model
+    openclaw_gateway_token = random_id.openclaw_gateway_token.hex
     slack_bot_token        = var.slack_bot_token
     slack_app_token        = var.slack_app_token
   })

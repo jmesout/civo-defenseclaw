@@ -85,7 +85,7 @@ cat > "$OPENCLAW_STATE/openclaw.json" <<'CONFIGEOF'
     "defaults": {
       "workspace": "~/.openclaw/workspace",
       "model": {
-        "primary": "relax/default"
+        "primary": "relax/${relax_model}"
       }
     }
   },

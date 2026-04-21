@@ -19,7 +19,7 @@ Forked in spirit from [`jmesout/civo-openclaw`](https://github.com/jmesout/civo-
 
 - **OpenClaw** runs as a systemd service on port `18789`, bound to `127.0.0.1`.
 - **DefenseClaw gateway** runs as a systemd service on port `8765`, bound to `127.0.0.1`.
-- **Firewall** only permits inbound SSH from `var.ssh_allowed_cidr`. All other ingress is denied.
+- **Firewall** allows SSH from `var.ssh_allowed_cidr` (default `0.0.0.0/0`; narrow to your source IP for production). All other ingress is denied.
 - **DefenseClaw guardrail** is registered in `action` mode — HIGH/CRITICAL findings auto-block, MEDIUM/LOW generate warnings.
 - Reach OpenClaw and DefenseClaw from your laptop via an SSH tunnel (`terraform output gateway_tunnel_command`).
 
@@ -59,11 +59,13 @@ Provisioning takes ~5–10 minutes. When the apply finishes, Terraform prints th
 | `civo_disk_image` | Image filter (default `ubuntu-noble`) |
 | `hostname` | Hostname on Civo (default `defenseclaw`) |
 | `ssh_public_key` | Your SSH public key, authorised for the `openclaw` user |
-| `ssh_allowed_cidr` | CIDR list allowed on port 22, e.g. `["203.0.113.5/32"]` |
+| `ssh_allowed_cidr` | Optional. CIDRs allowed on port 22. Default `["0.0.0.0/0"]` (open) — lock to your IP for production |
 | `relax_api_key` | Relax.ai API key used as OpenClaw's model backend |
-| `openclaw_gateway_token` | Bearer token for the OpenClaw gateway |
+| `relax_model` | Relax.ai model id rendered into OpenClaw config as `relax/<relax_model>` (e.g. `"Kimi-K25"`) |
 | `slack_bot_token` | Optional Slack `xoxb-…` token |
 | `slack_app_token` | Optional Slack `xapp-…` token (required if the bot token is set) |
+
+The OpenClaw gateway bearer token is **auto-generated** via Terraform's `random_id`. Retrieve it with `terraform output -raw openclaw_gateway_token`.
 
 ## Using OpenClaw
 
@@ -72,7 +74,8 @@ Open the tunnel, then point your client at `http://localhost:18789`:
 ```bash
 $(terraform output -raw gateway_tunnel_command)
 
-# In another terminal:
+# In another terminal — token comes out of Terraform:
+export OPENCLAW_GATEWAY_TOKEN=$(terraform output -raw openclaw_gateway_token)
 curl -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
      http://localhost:18789/health
 ```
@@ -106,7 +109,7 @@ curl http://localhost:8765/api/v1/status
 
 - Instance has a public IP; the Civo firewall denies everything except SSH from your CIDR and outbound 80/443/53.
 - OpenClaw (`18789`) and DefenseClaw (`8765`) listen on `127.0.0.1` only. They are never exposed publicly, even accidentally.
-- OpenSSH is left enabled (it's the only way in now that Tailscale is gone). Keep `ssh_allowed_cidr` narrow.
+- OpenSSH is left enabled (it's the only way in now that Tailscale is gone). The firewall defaults to `0.0.0.0/0` for port 22 — set `ssh_allowed_cidr` to your source IP for production.
 - The gateway token is still required on OpenClaw's HTTP surface.
 - The upstream installers (`openclaw.ai/install.sh`, `cisco-ai-defense/defenseclaw/main/scripts/install.sh`) are fetched from `main` — pin versions before using this anywhere near production.
 

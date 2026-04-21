@@ -17,3 +17,9 @@ output "defenseclaw_status_command" {
   description = "Check DefenseClaw gateway + guardrail health"
   value       = "ssh openclaw@${civo_instance.defenseclaw.public_ip} 'defenseclaw status'"
 }
+
+output "openclaw_gateway_token" {
+  description = "Auto-generated bearer token required on the OpenClaw gateway (port 18789). Retrieve with `terraform output -raw openclaw_gateway_token`."
+  value       = random_id.openclaw_gateway_token.hex
+  sensitive   = true
+}
