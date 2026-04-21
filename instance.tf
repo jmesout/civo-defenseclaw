@@ -18,7 +18,6 @@ resource "civo_instance" "defenseclaw" {
 
   script = templatefile("${path.module}/templates/cloud-init.sh.tpl", {
     hostname               = var.hostname
-    ssh_public_key         = var.ssh_public_key
     relax_api_key          = var.relax_api_key
     relax_model            = var.relax_model
     openclaw_gateway_token = random_id.openclaw_gateway_token.hex

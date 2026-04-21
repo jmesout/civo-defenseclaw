@@ -8,6 +8,16 @@ log() { echo "[defenseclaw-init] $(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a /var/
 log "Starting cloud-init provisioning"
 
 # -----------------------------------------------------------------------------
+# Enable password-based SSH login for the default civo user
+# -----------------------------------------------------------------------------
+log "Enabling password authentication on sshd"
+cat > /etc/ssh/sshd_config.d/10-password-auth.conf <<'SSHEOF'
+PasswordAuthentication yes
+PubkeyAuthentication yes
+SSHEOF
+systemctl reload ssh || systemctl reload sshd || true
+
+# -----------------------------------------------------------------------------
 # System updates
 # -----------------------------------------------------------------------------
 log "Updating system packages"
@@ -23,43 +33,24 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt-get install -y nodejs
 
 # -----------------------------------------------------------------------------
-# Create openclaw user and authorise the operator SSH key
-# -----------------------------------------------------------------------------
-log "Creating openclaw user"
-useradd -m -s /bin/bash openclaw || true
-
-install -d -m 700 -o openclaw -g openclaw /home/openclaw/.ssh
-cat > /home/openclaw/.ssh/authorized_keys <<KEYEOF
-${ssh_public_key}
-KEYEOF
-chmod 600 /home/openclaw/.ssh/authorized_keys
-chown openclaw:openclaw /home/openclaw/.ssh/authorized_keys
-
-# Allow the openclaw user to manage its own systemd units without a password
-cat > /etc/sudoers.d/openclaw <<'SUDOEOF'
-openclaw ALL=(root) NOPASSWD: /bin/systemctl
-SUDOEOF
-chmod 440 /etc/sudoers.d/openclaw
-
-# -----------------------------------------------------------------------------
-# Install OpenClaw (as the openclaw user)
+# Install OpenClaw (as the civo user)
 # -----------------------------------------------------------------------------
 log "Installing OpenClaw"
-su - openclaw -c 'curl -fsSL https://openclaw.ai/install.sh | bash'
+su - civo -c 'curl -fsSL https://openclaw.ai/install.sh | bash'
 
 # -----------------------------------------------------------------------------
 # Install DefenseClaw (gateway + CLI + OpenClaw plugin)
 # -----------------------------------------------------------------------------
 log "Installing DefenseClaw"
-su - openclaw -c 'curl -LsSf https://raw.githubusercontent.com/cisco-ai-defense/defenseclaw/main/scripts/install.sh | bash -s -- --yes'
-su - openclaw -c '$HOME/.local/bin/defenseclaw init --enable-guardrail --yes'
+su - civo -c 'curl -LsSf https://raw.githubusercontent.com/cisco-ai-defense/defenseclaw/main/scripts/install.sh | bash -s -- --yes'
+su - civo -c '$HOME/.local/bin/defenseclaw init --enable-guardrail --yes'
 
 # -----------------------------------------------------------------------------
 # Configure OpenClaw
 # -----------------------------------------------------------------------------
 log "Configuring OpenClaw"
 
-OPENCLAW_HOME="/home/openclaw"
+OPENCLAW_HOME="/home/civo"
 OPENCLAW_STATE="$OPENCLAW_HOME/.openclaw"
 
 mkdir -p "$OPENCLAW_STATE"
@@ -122,7 +113,7 @@ ENVEOF
 
 chmod 600 "$OPENCLAW_STATE/openclaw.json"
 chmod 600 "$OPENCLAW_STATE/.env"
-chown -R openclaw:openclaw "$OPENCLAW_STATE"
+chown -R civo:civo "$OPENCLAW_STATE"
 
 # -----------------------------------------------------------------------------
 # Systemd: DefenseClaw gateway
@@ -136,9 +127,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=openclaw
-WorkingDirectory=/home/openclaw
-ExecStart=/home/openclaw/.local/bin/defenseclaw-gateway start
+User=civo
+WorkingDirectory=/home/civo
+ExecStart=/home/civo/.local/bin/defenseclaw-gateway start
 Restart=on-failure
 RestartSec=10
 
@@ -158,12 +149,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=openclaw
-WorkingDirectory=/home/openclaw
-ExecStart=/home/openclaw/.local/bin/openclaw gateway
+User=civo
+WorkingDirectory=/home/civo
+ExecStart=/home/civo/.local/bin/openclaw gateway
 Restart=on-failure
 RestartSec=10
-EnvironmentFile=/home/openclaw/.openclaw/.env
+EnvironmentFile=/home/civo/.openclaw/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -182,7 +173,7 @@ log "OpenClaw gateway started"
 # Register the DefenseClaw guardrail plugin with OpenClaw
 # -----------------------------------------------------------------------------
 log "Registering DefenseClaw guardrail plugin in OpenClaw"
-su - openclaw -c '$HOME/.local/bin/defenseclaw setup guardrail --mode action --restart --yes' || \
+su - civo -c '$HOME/.local/bin/defenseclaw setup guardrail --mode action --restart --yes' || \
   log "WARN: defenseclaw setup guardrail returned non-zero; inspect manually with 'defenseclaw status'"
 
 log "Cloud-init provisioning complete"

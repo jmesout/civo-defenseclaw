@@ -7,8 +7,8 @@ Forked in spirit from [`jmesout/civo-openclaw`](https://github.com/jmesout/civo-
 ## What you get
 
 ```
-  operator laptop ── ssh(22) ──► Civo instance (public IP, firewall allowlist)
-                                   ├── defenseclaw-gateway.service  (REST :8765)
+  operator laptop ── ssh(22) ──► Civo instance (public IP)
+                                   ├── defenseclaw-gateway.service  (REST :8765, loopback)
                                    ├── openclaw.service             (gateway :18789, loopback)
                                    └── DefenseClaw OpenClaw plugin
                                           patches fetch() → guardrail proxy
@@ -20,6 +20,7 @@ Forked in spirit from [`jmesout/civo-openclaw`](https://github.com/jmesout/civo-
 - **OpenClaw** runs as a systemd service on port `18789`, bound to `127.0.0.1`.
 - **DefenseClaw gateway** runs as a systemd service on port `8765`, bound to `127.0.0.1`.
 - **Firewall** allows SSH from `var.ssh_allowed_cidr` (default `0.0.0.0/0`; narrow to your source IP for production). All other ingress is denied.
+- **SSH** uses Civo's auto-generated password for the default `civo` user — retrieve with `terraform output -raw ssh_password`.
 - **DefenseClaw guardrail** is registered in `action` mode — HIGH/CRITICAL findings auto-block, MEDIUM/LOW generate warnings.
 - Reach OpenClaw and DefenseClaw from your laptop via an SSH tunnel (`terraform output gateway_tunnel_command`).
 
@@ -29,9 +30,8 @@ Forked in spirit from [`jmesout/civo-openclaw`](https://github.com/jmesout/civo-
 |-------|-------|
 | Civo API token | <https://dashboard.civo.com/security> |
 | Relax.ai API key | <https://relax.ai> |
-| SSH keypair | `ssh-keygen -t ed25519` |
-| Your source IP (for the firewall) | `curl -4 ifconfig.io` |
 | Terraform | `>= 1.5.0` |
+| (Optional) source IP for the firewall | `curl -4 ifconfig.io` |
 | (Optional) Slack bot + app token | <https://api.slack.com/apps> |
 
 ## Quick start
@@ -45,9 +45,12 @@ $EDITOR terraform.tfvars           # fill in every REPLACE_ME
 
 terraform init
 terraform apply
+
+# Retrieve the auto-generated SSH password
+terraform output -raw ssh_password
 ```
 
-Provisioning takes ~5–10 minutes. When the apply finishes, Terraform prints the SSH command and tunnel command.
+Provisioning takes ~5–10 minutes. When the apply finishes, Terraform prints the SSH and tunnel commands.
 
 ## Variables
 
@@ -58,14 +61,15 @@ Provisioning takes ~5–10 minutes. When the apply finishes, Terraform prints th
 | `civo_instance_size` | Instance size (default `g3.small`; bump to `g3.medium` if tight) |
 | `civo_disk_image` | Image filter (default `ubuntu-noble`) |
 | `hostname` | Hostname on Civo (default `defenseclaw`) |
-| `ssh_public_key` | Your SSH public key, authorised for the `openclaw` user |
-| `ssh_allowed_cidr` | Optional. CIDRs allowed on port 22. Default `["0.0.0.0/0"]` (open) — lock to your IP for production |
+| `ssh_allowed_cidr` | Optional. CIDRs allowed on port 22. Default `["0.0.0.0/0"]` (open) — **strongly** recommended to lock down when using password auth |
 | `relax_api_key` | Relax.ai API key used as OpenClaw's model backend |
 | `relax_model` | Relax.ai model id rendered into OpenClaw config as `relax/<relax_model>` (e.g. `"Kimi-K25"`) |
 | `slack_bot_token` | Optional Slack `xoxb-…` token |
 | `slack_app_token` | Optional Slack `xapp-…` token (required if the bot token is set) |
 
-The OpenClaw gateway bearer token is **auto-generated** via Terraform's `random_id`. Retrieve it with `terraform output -raw openclaw_gateway_token`.
+Two secrets are **auto-generated** by Terraform and exposed as sensitive outputs:
+- `ssh_password` — Civo's initial password for the `civo` user (`terraform output -raw ssh_password`)
+- `openclaw_gateway_token` — bearer token for the OpenClaw gateway (`terraform output -raw openclaw_gateway_token`)
 
 ## Using OpenClaw
 
@@ -74,20 +78,21 @@ Open the tunnel, then point your client at `http://localhost:18789`:
 ```bash
 $(terraform output -raw gateway_tunnel_command)
 
-# In another terminal — token comes out of Terraform:
+# In another terminal:
 export OPENCLAW_GATEWAY_TOKEN=$(terraform output -raw openclaw_gateway_token)
 curl -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
      http://localhost:18789/health
 ```
 
-OpenClaw is configured to send completions to Relax.ai as provider `relax/default`.
+OpenClaw is configured to send completions to Relax.ai as provider `relax/<relax_model>`.
 
 ## Using DefenseClaw
 
-DefenseClaw's CLI is installed alongside OpenClaw under `/home/openclaw/.local/bin`. SSH in and run:
+DefenseClaw's CLI is installed under `/home/civo/.local/bin`. SSH in and run:
 
 ```bash
-ssh openclaw@$(terraform output -raw instance_public_ip)
+ssh civo@$(terraform output -raw instance_public_ip)
+# (paste the password from `terraform output -raw ssh_password`)
 
 defenseclaw status                  # gateway + guardrail health
 defenseclaw alerts -n 20            # recent enforcement events
@@ -107,9 +112,9 @@ curl http://localhost:8765/api/v1/status
 
 ## Security notes
 
-- Instance has a public IP; the Civo firewall denies everything except SSH from your CIDR and outbound 80/443/53.
-- OpenClaw (`18789`) and DefenseClaw (`8765`) listen on `127.0.0.1` only. They are never exposed publicly, even accidentally.
-- OpenSSH is left enabled (it's the only way in now that Tailscale is gone). The firewall defaults to `0.0.0.0/0` for port 22 — set `ssh_allowed_cidr` to your source IP for production.
+- Instance has a public IP. The Civo firewall denies everything except SSH from `ssh_allowed_cidr` and outbound 80/443/53.
+- OpenClaw (`18789`) and DefenseClaw (`8765`) listen on `127.0.0.1` only — never exposed publicly.
+- **Password-based SSH is enabled** for the default `civo` user. Combined with `ssh_allowed_cidr = ["0.0.0.0/0"]` this is brute-force exposed. Either narrow the CIDR to your source IP or switch back to key-based auth before using this outside a demo.
 - The gateway token is still required on OpenClaw's HTTP surface.
 - The upstream installers (`openclaw.ai/install.sh`, `cisco-ai-defense/defenseclaw/main/scripts/install.sh`) are fetched from `main` — pin versions before using this anywhere near production.
 

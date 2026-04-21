@@ -28,11 +28,6 @@ variable "hostname" {
   default     = "defenseclaw"
 }
 
-variable "ssh_public_key" {
-  description = "SSH public key (contents of id_ed25519.pub / id_rsa.pub) authorised to log in as the openclaw user."
-  type        = string
-}
-
 variable "ssh_allowed_cidr" {
   description = <<-EOT
     List of CIDRs permitted to SSH into the instance.

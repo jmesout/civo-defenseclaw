@@ -6,11 +6,12 @@ civo_disk_image    = "ubuntu-noble"
 hostname           = "defenseclaw"
 
 # --- SSH access -------------------------------------------------------------
-# Paste the contents of your public key file (e.g. ~/.ssh/id_ed25519.pub)
-ssh_public_key = "ssh-ed25519 AAAA... you@host"
-
-# Optional: source-IP lock for port 22. Defaults to ["0.0.0.0/0"] (open)
-# if omitted. Uncomment and set to your IP for a tighter posture.
+# Access is via Civo's auto-generated password for the default "civo" user.
+# After apply, run:  terraform output -raw ssh_password
+#
+# Optional: source-IP lock for port 22. Defaults to ["0.0.0.0/0"] (open).
+# Strongly recommended when using password auth — otherwise the internet can
+# brute-force the password.
 # ssh_allowed_cidr = ["123.123.123.5/32"]
 
 # --- Relax.ai (OpenClaw model backend) --------------------------------------
