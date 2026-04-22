@@ -22,12 +22,12 @@ echo "civo:${ssh_password}" | chpasswd
 systemctl reload ssh || systemctl reload sshd || true
 
 # -----------------------------------------------------------------------------
-# System updates
+# System updates & base packages
 # -----------------------------------------------------------------------------
 log "Updating system packages"
 apt-get update -y
 apt-get upgrade -y
-apt-get install -y curl git ca-certificates build-essential python3 python3-venv python3-pip jq
+apt-get install -y curl git ca-certificates build-essential python3 python3-venv python3-pip python3-yaml jq
 
 # -----------------------------------------------------------------------------
 # Install Node.js 22
@@ -44,32 +44,43 @@ su - civo -c 'curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboar
 
 # -----------------------------------------------------------------------------
 # Install DefenseClaw
-# Bypasses the upstream installer's checksum bug (grep substring-match
-# double-includes *.sbom.json lines). We fetch the gateway tarball + CLI wheel
-# directly from the GitHub release.
+# The upstream installer has a checksum bug (grep substring-match
+# double-includes *.sbom.json lines), so we fetch artefacts directly and
+# verify the one hash that checksums.txt does publish.
 # -----------------------------------------------------------------------------
 DEFENSECLAW_VERSION="0.2.0"
 
-log "Installing DefenseClaw gateway v$DEFENSECLAW_VERSION"
+log "Installing DefenseClaw gateway v$${DEFENSECLAW_VERSION}"
 su - civo -c "set -e
-  mkdir -p \$HOME/.local/bin
+  mkdir -p \$HOME/.local/bin \$HOME/.defenseclaw/extensions
   cd /tmp
+
   # uv (pulls Python deps for the CLI wheel)
   curl -LsSf https://astral.sh/uv/install.sh | sh </dev/null
-  # Gateway binary
-  curl -sSfL -o dc.tar.gz \"https://github.com/cisco-ai-defense/defenseclaw/releases/download/$DEFENSECLAW_VERSION/defenseclaw_$${DEFENSECLAW_VERSION}_linux_amd64.tar.gz\"
-  expected=\$(curl -sSfL \"https://github.com/cisco-ai-defense/defenseclaw/releases/download/$DEFENSECLAW_VERSION/checksums.txt\" | grep -E \"  defenseclaw_$${DEFENSECLAW_VERSION}_linux_amd64.tar.gz\\\$\" | awk '{print \$1}')
+
+  # Gateway binary (with sha256 verification)
+  curl -sSfL -o dc.tar.gz \"https://github.com/cisco-ai-defense/defenseclaw/releases/download/$${DEFENSECLAW_VERSION}/defenseclaw_$${DEFENSECLAW_VERSION}_linux_amd64.tar.gz\"
+  expected=\$(curl -sSfL \"https://github.com/cisco-ai-defense/defenseclaw/releases/download/$${DEFENSECLAW_VERSION}/checksums.txt\" | grep -E \"  defenseclaw_$${DEFENSECLAW_VERSION}_linux_amd64.tar.gz\\\$\" | awk '{print \$1}')
   actual=\$(sha256sum dc.tar.gz | awk '{print \$1}')
   [ \"\$expected\" = \"\$actual\" ] || { echo 'DefenseClaw gateway sha256 mismatch'; exit 1; }
   tar -xzf dc.tar.gz
   install -m 755 defenseclaw \$HOME/.local/bin/defenseclaw-gateway
+
   # CLI (Python wheel via uv tool)
-  curl -sSfL -o defenseclaw-$${DEFENSECLAW_VERSION}-py3-none-any.whl \"https://github.com/cisco-ai-defense/defenseclaw/releases/download/$DEFENSECLAW_VERSION/defenseclaw-$${DEFENSECLAW_VERSION}-py3-none-any.whl\"
+  curl -sSfL -o defenseclaw-$${DEFENSECLAW_VERSION}-py3-none-any.whl \"https://github.com/cisco-ai-defense/defenseclaw/releases/download/$${DEFENSECLAW_VERSION}/defenseclaw-$${DEFENSECLAW_VERSION}-py3-none-any.whl\"
   . \$HOME/.local/bin/env
   uv tool install --force /tmp/defenseclaw-$${DEFENSECLAW_VERSION}-py3-none-any.whl
+
+  # OpenClaw extension plugin (no sha published upstream, so no verify)
+  curl -sSfL -o dc-plugin.tar.gz \"https://github.com/cisco-ai-defense/defenseclaw/releases/download/$${DEFENSECLAW_VERSION}/defenseclaw-plugin-$${DEFENSECLAW_VERSION}.tar.gz\"
+  mkdir -p \$HOME/.defenseclaw/extensions/defenseclaw
+  tar -xzf dc-plugin.tar.gz -C \$HOME/.defenseclaw/extensions/defenseclaw --strip-components=1 2>/dev/null \\
+    || tar -xzf dc-plugin.tar.gz -C \$HOME/.defenseclaw/extensions/defenseclaw
+  mkdir -p \$HOME/.openclaw/extensions
+  ln -sf \$HOME/.defenseclaw/extensions/defenseclaw \$HOME/.openclaw/extensions/defenseclaw
 "
 
-log "Initialising DefenseClaw (skipping interactive guardrail step)"
+log "Initialising DefenseClaw"
 su - civo -c '. $HOME/.local/bin/env && $HOME/.local/bin/defenseclaw init </dev/null' || true
 
 # -----------------------------------------------------------------------------
@@ -80,8 +91,7 @@ log "Configuring OpenClaw"
 OPENCLAW_HOME="/home/civo"
 OPENCLAW_STATE="$OPENCLAW_HOME/.openclaw"
 
-mkdir -p "$OPENCLAW_STATE"
-mkdir -p "$OPENCLAW_STATE/workspace"
+mkdir -p "$OPENCLAW_STATE" "$OPENCLAW_STATE/workspace"
 
 cat > "$OPENCLAW_STATE/openclaw.json" <<'CONFIGEOF'
 {
@@ -136,27 +146,62 @@ SLACK_APP_TOKEN=${slack_app_token}
 %{ endif ~}
 ENVEOF
 
-chmod 600 "$OPENCLAW_STATE/openclaw.json"
-chmod 600 "$OPENCLAW_STATE/.env"
+chmod 600 "$OPENCLAW_STATE/openclaw.json" "$OPENCLAW_STATE/.env"
 chown -R civo:civo "$OPENCLAW_STATE"
 
 # -----------------------------------------------------------------------------
-# Systemd: DefenseClaw gateway (Type=forking — the binary daemonises)
+# Configure DefenseClaw: wire the gateway auth token and seed guardrail config
+# so `defenseclaw setup guardrail --non-interactive` can succeed.
+# -----------------------------------------------------------------------------
+log "Wiring DefenseClaw to OpenClaw (auth + guardrail seed)"
+
+cat > /home/civo/.defenseclaw/.env <<ENVEOF
+OPENCLAW_GATEWAY_TOKEN=${openclaw_gateway_token}
+RELAX_API_KEY=${relax_api_key}
+ENVEOF
+chmod 600 /home/civo/.defenseclaw/.env
+chown civo:civo /home/civo/.defenseclaw/.env
+
+su - civo -c 'python3 - <<PY
+import yaml
+p = "/home/civo/.defenseclaw/config.yaml"
+c = yaml.safe_load(open(p))
+c.setdefault("gateway", {})["token_env"] = "OPENCLAW_GATEWAY_TOKEN"
+c.setdefault("inspect_llm", {}).update({
+    "provider": "openai",
+    "model": "${relax_model}",
+    "api_key_env": "RELAX_API_KEY",
+    "base_url": "https://api.relax.ai/v1",
+})
+c.setdefault("guardrail", {}).update({
+    "enabled": True,
+    "mode": "action",
+    "scanner_mode": "local",
+    "port": 18889,
+    "model": "openai/${relax_model}",
+    "model_name": "${relax_model}",
+    "api_key_env": "RELAX_API_KEY",
+    "original_model": "relax/${relax_model}",
+})
+yaml.safe_dump(c, open(p, "w"), default_flow_style=False, sort_keys=False)
+PY'
+
+# -----------------------------------------------------------------------------
+# Systemd: DefenseClaw gateway (foreground; no args = daemon in-process)
 # -----------------------------------------------------------------------------
 log "Creating defenseclaw-gateway systemd service"
 cat > /etc/systemd/system/defenseclaw-gateway.service <<'SERVICEEOF'
 [Unit]
 Description=DefenseClaw Gateway
-After=network-online.target
+After=network-online.target openclaw.service
 Wants=network-online.target
 
 [Service]
-Type=forking
+Type=simple
 User=civo
 WorkingDirectory=/home/civo
-PIDFile=/home/civo/.defenseclaw/gateway.pid
-ExecStart=/home/civo/.local/bin/defenseclaw-gateway start
-ExecStop=/home/civo/.local/bin/defenseclaw-gateway stop
+EnvironmentFile=/home/civo/.defenseclaw/.env
+ExecStart=/home/civo/.local/bin/defenseclaw-gateway
 Restart=on-failure
 RestartSec=10
 
@@ -171,7 +216,7 @@ log "Creating openclaw systemd service"
 cat > /etc/systemd/system/openclaw.service <<'SERVICEEOF'
 [Unit]
 Description=OpenClaw AI Gateway
-After=network-online.target defenseclaw-gateway.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -188,14 +233,28 @@ WantedBy=multi-user.target
 SERVICEEOF
 
 systemctl daemon-reload
-systemctl enable defenseclaw-gateway
-systemctl start defenseclaw-gateway
-log "DefenseClaw gateway started"
-
-systemctl enable openclaw
-systemctl start openclaw
+systemctl enable --now openclaw
 log "OpenClaw gateway started"
 
+systemctl enable --now defenseclaw-gateway
+log "DefenseClaw gateway started"
+
+# Wait for OpenClaw to accept connections before patching its config
+for i in $(seq 1 20); do
+  if curl -sS -m 2 http://127.0.0.1:18789/health >/dev/null 2>&1; then
+    log "OpenClaw gateway responding on :18789"
+    break
+  fi
+  sleep 2
+done
+
+# -----------------------------------------------------------------------------
+# Enable the DefenseClaw guardrail — patches OpenClaw config and restarts
+# both services. Runs non-interactively since config.yaml is fully seeded.
+# -----------------------------------------------------------------------------
+log "Enabling DefenseClaw guardrail (action mode, local scanner)"
+su - civo -c '. $HOME/.local/bin/env && $HOME/.local/bin/defenseclaw setup guardrail --mode action --scanner-mode local --non-interactive --restart --no-verify' \
+  2>&1 | tee -a /var/log/openclaw-init.log \
+  || log "WARN: guardrail setup returned non-zero; see above and run 'defenseclaw-gateway status'"
+
 log "Cloud-init provisioning complete"
-log "To enable the DefenseClaw guardrail, ssh in and run:"
-log "  defenseclaw setup guardrail  (interactive — pick action mode, local scanner)"

@@ -11,9 +11,9 @@ variable "civo_region" {
 }
 
 variable "civo_instance_size" {
-  description = "Civo instance size (e.g. g3.small, g3.medium). g3.medium recommended when running both OpenClaw and the DefenseClaw gateway."
+  description = "Civo instance size. LON1 currently serves the g4s.* family; g3.* may return size_not_selectable. g4s.medium (2c/4GB) is comfortable for Node + Go gateway; downgrade to g4s.small (1c/2GB) for lighter use."
   type        = string
-  default     = "g3.small"
+  default     = "g4s.medium"
 }
 
 variable "civo_disk_image" {
