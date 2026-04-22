@@ -51,12 +51,18 @@ su - civo -c 'curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboar
 DEFENSECLAW_VERSION="0.2.0"
 
 log "Installing DefenseClaw gateway v$${DEFENSECLAW_VERSION}"
+
+# Fetch uv installer to disk first — piping `curl | sh` into a no-TTY login
+# shell trips SIGPIPE and "curl: (23) Failure writing output to destination".
+curl -LsSf https://astral.sh/uv/install.sh -o /tmp/uv-install.sh
+chmod +x /tmp/uv-install.sh
+
 su - civo -c "set -e
   mkdir -p \$HOME/.local/bin \$HOME/.defenseclaw/extensions
   cd /tmp
 
-  # uv (pulls Python deps for the CLI wheel)
-  curl -LsSf https://astral.sh/uv/install.sh | sh </dev/null
+  # uv (installs to ~/.local/bin and writes the 'env' shim used below)
+  sh /tmp/uv-install.sh --quiet </dev/null
 
   # Gateway binary (with sha256 verification)
   curl -sSfL -o dc.tar.gz \"https://github.com/cisco-ai-defense/defenseclaw/releases/download/$${DEFENSECLAW_VERSION}/defenseclaw_$${DEFENSECLAW_VERSION}_linux_amd64.tar.gz\"
@@ -71,13 +77,14 @@ su - civo -c "set -e
   . \$HOME/.local/bin/env
   uv tool install --force /tmp/defenseclaw-$${DEFENSECLAW_VERSION}-py3-none-any.whl
 
-  # OpenClaw extension plugin (no sha published upstream, so no verify)
+  # OpenClaw extension plugin (no sha published upstream).
+  # Install via OpenClaw's own installer so the plugin is registered and
+  # loaded by the gateway. OpenClaw's plugin scanner flags DefenseClaw
+  # because it uses child_process (needed for scanning other plugins),
+  # so we pass --dangerously-force-unsafe-install to bypass the check.
   curl -sSfL -o dc-plugin.tar.gz \"https://github.com/cisco-ai-defense/defenseclaw/releases/download/$${DEFENSECLAW_VERSION}/defenseclaw-plugin-$${DEFENSECLAW_VERSION}.tar.gz\"
-  mkdir -p \$HOME/.defenseclaw/extensions/defenseclaw
-  tar -xzf dc-plugin.tar.gz -C \$HOME/.defenseclaw/extensions/defenseclaw --strip-components=1 2>/dev/null \\
-    || tar -xzf dc-plugin.tar.gz -C \$HOME/.defenseclaw/extensions/defenseclaw
-  mkdir -p \$HOME/.openclaw/extensions
-  ln -sf \$HOME/.defenseclaw/extensions/defenseclaw \$HOME/.openclaw/extensions/defenseclaw
+  export PATH=\$HOME/.npm-global/bin:\$PATH
+  openclaw plugins install /tmp/dc-plugin.tar.gz --force --dangerously-force-unsafe-install
 "
 
 log "Initialising DefenseClaw"
