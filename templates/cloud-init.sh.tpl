@@ -85,6 +85,14 @@ su - civo -c "set -e
   curl -sSfL -o dc-plugin.tar.gz \"https://github.com/cisco-ai-defense/defenseclaw/releases/download/$${DEFENSECLAW_VERSION}/defenseclaw-plugin-$${DEFENSECLAW_VERSION}.tar.gz\"
   export PATH=\$HOME/.npm-global/bin:\$PATH
   openclaw plugins install /tmp/dc-plugin.tar.gz --force --dangerously-force-unsafe-install
+
+  # The installer writes a restrictive plugins.allow=[defenseclaw,…] which
+  # disables the bundled OpenClaw CLI plugins (capability, agent, …).
+  # Drop the key so all discovered plugins auto-load permissively.
+  tmp=\$(mktemp)
+  jq 'if has(\"plugins\") then .plugins |= del(.allow) else . end' \$HOME/.openclaw/openclaw.json > \$tmp
+  mv \$tmp \$HOME/.openclaw/openclaw.json
+  chmod 600 \$HOME/.openclaw/openclaw.json
 "
 
 log "Initialising DefenseClaw"
@@ -209,8 +217,8 @@ User=civo
 WorkingDirectory=/home/civo
 EnvironmentFile=/home/civo/.defenseclaw/.env
 ExecStart=/home/civo/.local/bin/defenseclaw-gateway
-Restart=on-failure
-RestartSec=10
+Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -231,8 +239,8 @@ Type=simple
 User=civo
 WorkingDirectory=/home/civo
 ExecStart=/home/civo/.npm-global/bin/openclaw gateway
-Restart=on-failure
-RestartSec=10
+Restart=always
+RestartSec=5
 EnvironmentFile=/home/civo/.openclaw/.env
 
 [Install]
