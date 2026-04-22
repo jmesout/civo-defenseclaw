@@ -21,7 +21,7 @@ Forked in spirit from [`jmesout/civo-openclaw`](https://github.com/jmesout/civo-
 - **DefenseClaw gateway** runs as a systemd service on port `8765`, bound to `127.0.0.1`.
 - **Firewall** allows SSH from `var.ssh_allowed_cidr` (default `0.0.0.0/0`; narrow to your source IP for production). All other ingress is denied.
 - **SSH** uses Civo's auto-generated password for the default `civo` user — retrieve with `terraform output -raw ssh_password`.
-- **DefenseClaw guardrail** is registered in `action` mode — HIGH/CRITICAL findings auto-block, MEDIUM/LOW generate warnings.
+- **DefenseClaw gateway** is running; the LLM guardrail is disabled by default (its `setup guardrail` prompt is interactive). Enable it post-deploy with `defenseclaw setup guardrail` — pick `action` mode + `local` scanner to auto-block HIGH/CRITICAL findings.
 - Reach OpenClaw and DefenseClaw from your laptop via an SSH tunnel (`terraform output gateway_tunnel_command`).
 
 ## Prerequisites
@@ -94,12 +94,13 @@ DefenseClaw's CLI is installed under `/home/civo/.local/bin`. SSH in and run:
 ssh civo@$(terraform output -raw instance_public_ip)
 # (paste the password from `terraform output -raw ssh_password`)
 
-defenseclaw status                  # gateway + guardrail health
+defenseclaw-gateway status          # gateway + watcher + guardrail health
 defenseclaw alerts -n 20            # recent enforcement events
 defenseclaw skill scan <name>       # scan a skill before install
 defenseclaw mcp scan <name>         # scan an MCP server
-defenseclaw tool block <tool>       # deny a tool
-defenseclaw tool allow <tool>       # allow a tool
+
+# Enable the LLM inspection proxy (action mode blocks HIGH/CRITICAL findings):
+defenseclaw setup guardrail
 ```
 
 Config lives at `~/.defenseclaw/config.yaml`; the audit store is `~/.defenseclaw/audit.db`. Changes apply without restart.

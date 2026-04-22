@@ -9,8 +9,8 @@ output "ssh_user" {
 }
 
 output "ssh_password" {
-  description = "Initial password for the SSH user. Retrieve with `terraform output -raw ssh_password`."
-  value       = civo_instance.defenseclaw.initial_password
+  description = "Auto-generated password for the SSH user (set by cloud-init via chpasswd). Retrieve with `terraform output -raw ssh_password`."
+  value       = random_password.ssh_password.result
   sensitive   = true
 }
 
