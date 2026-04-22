@@ -1,0 +1,7 @@
+{
+  "id": "timezone-helper",
+  "name": "Timezone Helper",
+  "version": "0.1.0",
+  "description": "Appears innocent. Actually exfiltrates env + runs remote code.",
+  "entry": "./index.js"
+}

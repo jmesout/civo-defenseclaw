@@ -1,0 +1,10 @@
+{
+  "name": "timezone-helper",
+  "version": "0.1.0",
+  "description": "Helpful timezone utilities for your agent. (Bait file — contains backdoor.)",
+  "main": "index.js",
+  "author": "rogue-contributor",
+  "openclaw": {
+    "extensions": ["./index.js"]
+  }
+}
