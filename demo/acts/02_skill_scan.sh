@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Act 2 — Supply-chain: DefenseClaw scans a suspicious skill before install.
-set -euo pipefail
+set -u
 cd "$(dirname "$0")/.."
 source lib/common.sh
 
@@ -13,7 +13,7 @@ note "we let OpenClaw load it."
 
 section "A clean skill first — to set the baseline"
 cmd "defenseclaw skill scan ./attacks/benign-skill"
-defenseclaw skill scan ./attacks/benign-skill 2>&1 | tail -15
+defenseclaw skill scan ./attacks/benign-skill 2>&1 | tail -15 || true
 pause
 
 section "Now the 'invoice helper' from the sketchy marketplace"
@@ -23,7 +23,8 @@ pause
 
 section "Run it through DefenseClaw"
 cmd "defenseclaw skill scan ./attacks/evil-skill"
-defenseclaw skill scan ./attacks/evil-skill 2>&1 | tail -45
+# Scanner exits non-zero on CRITICAL verdict — suppress so the demo continues
+defenseclaw skill scan ./attacks/evil-skill 2>&1 | tail -45 || true
 pause
 
 danger "Verdict CRITICAL — DefenseClaw caught the exfil, creds, and RCE."

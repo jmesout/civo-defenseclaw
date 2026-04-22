@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Act 5 — Forensics: DefenseClaw's audit trail + alerts.
-set -euo pipefail
+set -u
 cd "$(dirname "$0")/.."
 source lib/common.sh
 
@@ -13,7 +13,7 @@ note "enterprise-grade observability."
 
 section "Recent alerts (plain table — the TUI is also available without --no-tui)"
 cmd "defenseclaw alerts --no-tui -n 15"
-defenseclaw alerts --no-tui -n 15 2>&1 | tail -25
+defenseclaw alerts --no-tui -n 15 2>&1 | tail -25 || true
 pause
 
 section "The audit store (SQLite — ships with every install)"

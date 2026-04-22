@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Act 1 — Posture check. DefenseClaw's sidecar health + built-in policies.
-set -euo pipefail
+set -u
 cd "$(dirname "$0")/.."
 source lib/common.sh
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
@@ -18,12 +18,13 @@ pause
 
 section "DefenseClaw doctor — config, DB, scanners, services"
 cmd "defenseclaw doctor"
-defenseclaw doctor 2>&1 | sed '/^$/d' | head -20
+# doctor returns non-zero on any FAIL row (cosmetic Relax.ai 401 probe) — ignore
+defenseclaw doctor 2>&1 | sed '/^$/d' | head -20 || true
 pause
 
 section "Built-in security policies (OPA/Rego-backed)"
 cmd "defenseclaw policy list"
-defenseclaw policy list 2>&1 | head -20
+defenseclaw policy list 2>&1 | head -20 || true
 pause
 
 note "Four policies ship out of the box — from permissive (dev) to"

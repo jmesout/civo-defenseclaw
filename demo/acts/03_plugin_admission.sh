@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Act 3 — Plugin admission control. A poisoned plugin gets refused at install.
-set -euo pipefail
+set -u
 cd "$(dirname "$0")/.."
 source lib/common.sh
 
@@ -18,7 +18,7 @@ pause
 
 section "DefenseClaw's plugin scanner"
 cmd "defenseclaw plugin scan ./attacks/backdoor-plugin"
-defenseclaw plugin scan ./attacks/backdoor-plugin 2>&1 | tail -20
+defenseclaw plugin scan ./attacks/backdoor-plugin 2>&1 | tail -20 || true
 pause
 
 section "Now try to install it through OpenClaw (pre-flight scan fires)"

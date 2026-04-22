@@ -3,7 +3,10 @@
 #
 # Run this ON THE CIVO INSTANCE (the demo/ folder gets uploaded there by
 # ../demo-remote.sh). Relies on defenseclaw/openclaw/jq being on PATH.
-set -euo pipefail
+#
+# Deliberately tolerant of non-zero exit codes so a single CLI hiccup
+# doesn't abort the whole walkthrough.
+set -u
 
 cd "$(dirname "$0")"
 source lib/common.sh
@@ -40,7 +43,8 @@ title
 pause
 
 for act in "${ACTS[@]}"; do
-  bash "$act"
+  # `|| true` — a failing command inside an act shouldn't kill the show.
+  bash "$act" || true
 done
 
 banner "Demo complete" "Cisco DefenseClaw — posture, prevention, runtime, forensics"
